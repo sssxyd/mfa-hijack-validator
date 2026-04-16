@@ -1,6 +1,6 @@
 {
-  "name": "mfa-hajack-validator",
-  "version": "1.0.2",
+  "name": "mfa-hijack-validator",
+  "version": "1.0.3",
   "description": "",
   "scripts": {
     "test": "echo \"No tests configured\"",
@@ -8,16 +8,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sssxyd/mfa-hajack-validator.git"
+    "url": "git+https://github.com/sssxyd/mfa-hijack-validator.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/sssxyd/mfa-hajack-validator/issues"
+    "url": "https://github.com/sssxyd/mfa-hijack-validator/issues"
   },
-  "homepage": "https://github.com/sssxyd/mfa-hajack-validator#readme",
+  "homepage": "https://github.com/sssxyd/mfa-hijack-validator#readme",
   "devDependencies": {
     "terser": "^5.46.1",
     "typescript": "^6.0.2"
