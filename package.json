@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/sssxyd/mfa-hajack-validator#readme",
   "devDependencies": {
+    "terser": "^5.46.1",
     "typescript": "^6.0.2"
   }
 }

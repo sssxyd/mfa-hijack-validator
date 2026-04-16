@@ -1,10 +1,147 @@
-import { isMobileDevice, getResponsiveConfig, getFieldValue } from './utils';
+/**
+ * 根据 CSS selector 获取元素的值
+ * 支持获取：input/textarea/select 的 value，其他元素的 textContent
+ */
+declare const global: any;
+
+function getFieldValue(selector: string): string | null {
+  const element = document.querySelector(selector);
+  if (!element) {
+    return null;
+  }
+
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+    return element.value;
+  }
+
+  if (element instanceof HTMLSelectElement) {
+    return element.value;
+  }
+
+  return element.textContent;
+}
+
+/**
+ * 设备检测：判断是否为移动设备
+ */
+function isMobileDevice(): boolean {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+
+  // 通过User-Agent判断
+  const userAgent = navigator.userAgent.toLowerCase();
+  const mobileKeywords = ['mobile', 'android', 'iphone', 'ipad', 'ipod', 'windows phone', 'blackberry', 'opera mini'];
+  if (mobileKeywords.some(keyword => userAgent.includes(keyword))) {
+    return true;
+  }
+
+  // 通过触摸事件判断
+  if (typeof window !== 'undefined' && 'ontouchstart' in window) {
+    return true;
+  }
+
+  // 通过屏幕宽度判断（iPad等大屏设备）
+  if (window.innerWidth < 768) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * 获取响应式样式配置
+ */
+function getResponsiveConfig(isMobile: boolean) {
+  if (isMobile) {
+    // 移动设备配置
+    return {
+      modal: {
+        width: '100%',
+        height: '100%',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)'
+      },
+      panel: {
+        width: 'auto',
+        minWidth: '280px',
+        maxWidth: '85%',
+        padding: '20px 16px',
+        borderRadius: '8px',
+        maxHeight: '70vh',
+        overflow: 'auto'
+      },
+      title: {
+        fontSize: '16px',
+        marginBottom: '12px'
+      },
+      input: {
+        padding: '10px',
+        fontSize: '16px',
+        marginBottom: '12px',
+        borderRadius: '4px',
+        border: '1px solid #d9d9d9'
+      },
+      actions: {
+        gap: '8px'
+      },
+      button: {
+        flex: 1,
+        padding: '10px',
+        fontSize: '14px',
+        borderRadius: '4px',
+        border: 'none',
+        cursor: 'pointer'
+      }
+    };
+  } else {
+    // 电脑端配置
+    return {
+      modal: {
+        width: '100%',
+        height: '100%',
+        backgroundColor: 'rgba(0, 0, 0, 0.45)'
+      },
+      panel: {
+        width: 'auto',
+        minWidth: '280px',
+        maxWidth: '400px',
+        padding: '20px',
+        borderRadius: '8px',
+        maxHeight: '80vh',
+        overflow: 'auto'
+      },
+      title: {
+        fontSize: '16px',
+        marginBottom: '12px'
+      },
+      input: {
+        padding: '8px',
+        fontSize: '14px',
+        marginBottom: '12px',
+        borderRadius: '4px',
+        border: '1px solid #d9d9d9'
+      },
+      actions: {
+        gap: '8px'
+      },
+      button: {
+        flex: 1,
+        padding: '8px 16px',
+        fontSize: '14px',
+        borderRadius: '4px',
+        border: 'none',
+        cursor: 'pointer'
+      }
+    };
+  }
+}
 
 interface MFAHajackValidatorOptions {
   uidSelector: string | null; // 用户唯一标识选择器
-  guardedSelector: string | string[]; // 需要保护的元素选择器
-  sendCode: (uid: string | null) => Promise<string>; // 发送验证码函数，返回mfa-session-id
-  verifyCode: (mfaSessionId: string, code: string) => Promise<string>; // 返回空字符串或 'ok'/'success'(不区分大小写)表示成功，否则返回错误信息
+  clickSelector?: string | string[] | null; // click 事件选择器（可选）
+  enterSelector?: string | string[] | null; // enter 事件选择器（可选）
+  sendCode: (uid: string | null) => Promise<{ success: boolean; id: string; message: string }>; // 发送验证码函数，返回 {success, id, message}
+  verifyCode: (id: string, code: string) => Promise<{ success: boolean; message: string }>; // 返回 {success, message}，message 为错误信息
   title?: string;
   confirmText?: string;
   cancelText?: string;
@@ -17,24 +154,75 @@ interface MFAHajackValidatorController {
   destroy: () => void;
 }
 
-interface Window {
-  initMFAHajackValidator?: (options: MFAHajackValidatorOptions) => MFAHajackValidatorController;
-}
-
 const MODAL_ID = 'mfa-hajack-validator-modal';
 const allowedClickElements = new WeakSet<HTMLElement>();
 
 function initMFAHajackValidator(options: MFAHajackValidatorOptions): MFAHajackValidatorController {
-  if (!options.guardedSelector || (Array.isArray(options.guardedSelector) && options.guardedSelector.length === 0)) {
-    throw new Error('guardedSelector is required');
+  // 至少需要一个 selector（click 或 enter）
+  const hasClickSelector = options.clickSelector && (Array.isArray(options.clickSelector) ? options.clickSelector.length > 0 : true);
+  const hasEnterSelector = options.enterSelector && (Array.isArray(options.enterSelector) ? options.enterSelector.length > 0 : true);
+  
+  if (!hasClickSelector && !hasEnterSelector) {
+    throw new Error('At least one of guardedClickSelector or guardedEnterSelector is required');
   }
 
   let pendingElement: HTMLElement | null = null;
   const maxAttempts = options.maxVerifyAttempts ?? 1; // 默认最多验证1次
   let verifySuccessCount = 0; // 验证成功计数器
-  const selectors = Array.isArray(options.guardedSelector) ? options.guardedSelector : [options.guardedSelector]; // 将 guardedSelector 转换为数组
+  
+  const clickSelectors: string[] = [];
+  if (hasClickSelector && options.clickSelector) {
+    if (Array.isArray(options.clickSelector)) {
+      clickSelectors.push(...options.clickSelector);
+    } else {
+      clickSelectors.push(options.clickSelector);
+    }
+  }
+  
+  const enterSelectors: string[] = [];
+  if (hasEnterSelector && options.enterSelector) {
+    if (Array.isArray(options.enterSelector)) {
+      enterSelectors.push(...options.enterSelector);
+    } else {
+      enterSelectors.push(options.enterSelector);
+    }
+  }
 
-  const listener = (event: MouseEvent): void => {
+  const triggerMFA = (element: HTMLElement) => {
+    // 检查是否已达到最大验证次数
+    if (verifySuccessCount >= maxAttempts) {
+      return false;
+    }
+
+    pendingElement = element;
+
+    // 获取 uid 并发送验证码
+    (async () => {
+      try {
+        const uid = options.uidSelector ? getFieldValue(options.uidSelector) : null;
+        const result = await options.sendCode(uid);
+        if (!result.success) {
+          openModal(options, '', () => pendingElement, () => {
+            pendingElement = null;
+          }, () => {
+            verifySuccessCount++;
+          }, result.message);
+          return;
+        }
+        openModal(options, result.id, () => pendingElement, () => {
+          pendingElement = null;
+        }, () => {
+          verifySuccessCount++; // 验证成功，计数器加1
+        });
+      } catch (error) {
+        console.error('获取验证码失败:', error);
+      }
+    })();
+
+    return true;
+  };
+
+  const clickListener = (event: MouseEvent): void => {
     const target = event.target;
     if (!(target instanceof Element)) {
       return;
@@ -42,7 +230,7 @@ function initMFAHajackValidator(options: MFAHajackValidatorOptions): MFAHajackVa
 
     // 检查是否匹配任何一个 selector
     let guardedElement: HTMLElement | null = null;
-    for (const selector of selectors) {
+    for (const selector of clickSelectors) {
       guardedElement = target.closest(selector) as HTMLElement | null;
       if (guardedElement) {
         break;
@@ -52,42 +240,59 @@ function initMFAHajackValidator(options: MFAHajackValidatorOptions): MFAHajackVa
       return;
     }
 
+    // 如果该元素在允许列表中，说明已通过 MFA 验证，允许默认行为执行
     if (allowedClickElements.has(guardedElement)) {
       allowedClickElements.delete(guardedElement);
-      return;
+      return; // 不阻止默认行为
     }
 
-    // 检查是否已达到最大验证次数
-    if (verifySuccessCount >= maxAttempts) {
+    if (!triggerMFA(guardedElement)) {
       return;
     }
 
     event.preventDefault();
     event.stopImmediatePropagation();
-
-    pendingElement = guardedElement;
-
-    // 获取 uid 并发送验证码
-    (async () => {
-      try {
-        const uid = options.uidSelector ? getFieldValue(options.uidSelector) : null;
-        const mfaSessionId = await options.sendCode(uid);
-        openModal(options, mfaSessionId, () => pendingElement, () => {
-          pendingElement = null;
-        }, () => {
-          verifySuccessCount++; // 验证成功，计数器加1
-        });
-      } catch (error) {
-        console.error('获取验证码失败:', error);
-      }
-    })();
   };
 
-  document.addEventListener('click', listener, true);
+  const keydownListener = (event: KeyboardEvent): void => {
+    if (event.key !== 'Enter') {
+      return;
+    }
+
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+
+    // 检查是否匹配任何一个 enter selector
+    let guardedElement: HTMLElement | null = null;
+    for (const selector of enterSelectors) {
+      guardedElement = target.closest(selector) as HTMLElement | null;
+      if (guardedElement) {
+        break;
+      }
+    }
+    if (!guardedElement) {
+      return;
+    }
+
+    if (!triggerMFA(guardedElement)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+
+  document.addEventListener('click', clickListener, true);
+  if (enterSelectors.length > 0) {
+    document.addEventListener('keydown', keydownListener, true);
+  }
 
   return {
     destroy: () => {
-      document.removeEventListener('click', listener, true);
+      document.removeEventListener('click', clickListener, true);
+      document.removeEventListener('keydown', keydownListener, true);
       closeModal();
     }
   };
@@ -98,7 +303,8 @@ function openModal(
   mfaSessionId: string,
   getPendingElement: () => HTMLElement | null,
   clearPendingElement: () => void,
-  onVerifySuccess?: () => void
+  onVerifySuccess?: () => void,
+  initialError?: string
 ): void {
   const isMobile = isMobileDevice();
   const config = getResponsiveConfig(isMobile);
@@ -117,7 +323,7 @@ function openModal(
   modal.style.height = config.modal.height;
   modal.style.display = 'flex';
   modal.style.justifyContent = 'center';
-  modal.style.alignItems = isMobile ? 'flex-end' : 'center';
+  modal.style.alignItems = 'center';
   modal.style.backgroundColor = config.modal.backgroundColor;
   modal.style.zIndex = '2147483647';
 
@@ -133,31 +339,6 @@ function openModal(
   panel.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.2)';
   panel.style.maxHeight = config.panel.maxHeight;
   panel.style.overflow = config.panel.overflow;
-  
-  // 移动设备底部弹起效果
-  if (isMobile) {
-    panel.style.borderRadius = '12px 12px 0 0';
-    panel.style.animation = 'slideUp 0.3s ease-out';
-    
-    // 添加样式标签
-    const styleTag = document.createElement('style');
-    styleTag.textContent = `
-      @keyframes slideUp {
-        from {
-          transform: translateY(100%);
-          opacity: 0;
-        }
-        to {
-          transform: translateY(0);
-          opacity: 1;
-        }
-      }
-    `;
-    if (!document.querySelector('[data-mfa-animations]')) {
-      styleTag.setAttribute('data-mfa-animations', 'true');
-      document.head.appendChild(styleTag);
-    }
-  }
 
   const title = document.createElement('h3');
   title.textContent = options.title ?? 'MFA 验证';
@@ -170,6 +351,7 @@ function openModal(
   input.placeholder = options.inputPlaceholder ?? '请输入验证码';
   input.autocomplete = 'one-time-code';
   input.inputMode = 'numeric'; // 移动设备弹出数字键盘
+  input.disabled = !!initialError; // 如果有初始错误，禁用输入框
   input.style.width = '100%';
   input.style.padding = config.input.padding;
   input.style.marginBottom = config.input.marginBottom;
@@ -184,6 +366,11 @@ function openModal(
   message.style.minHeight = '16px';
   message.style.marginBottom = isMobile ? '16px' : '12px';
   message.style.wordBreak = 'break-word';
+  
+  // 如果有初始错误信息（例如发送验证码失败），直接显示
+  if (initialError) {
+    message.textContent = initialError;
+  }
 
   const actions = document.createElement('div');
   actions.style.display = 'flex';
@@ -204,6 +391,7 @@ function openModal(
   const confirmButton = document.createElement('button');
   confirmButton.type = 'button';
   confirmButton.textContent = options.confirmText ?? '验证';
+  confirmButton.disabled = !!initialError; // 如果有初始错误，禁用确认按钮
   confirmButton.style.flex = isMobile ? '1' : 'auto';
   confirmButton.style.padding = config.button.padding;
   confirmButton.style.fontSize = config.button.fontSize;
@@ -244,11 +432,9 @@ function openModal(
 
     try {
       const result = await options.verifyCode(mfaSessionId, code);
-      // 返回空字符串或 'ok'、'success'(不区分大小写)表示成功
-      const isSuccess = !result || result.toLowerCase() === 'ok' || result.toLowerCase() === 'success';
-      if (!isSuccess) {
-        // 返回值作为错误信息显示
-        message.textContent = result || (options.errorText ?? '验证码错误，请重试');
+      if (!result.success) {
+        // 验证失败，显示错误信息
+        message.textContent = result.message || (options.errorText ?? '验证码错误，请重试');
         input.value = '';
         input.focus();
         return;
@@ -316,4 +502,7 @@ function closeModal(): void {
   }
 }
 
-(window as any).initMFAHajackValidator = initMFAHajackValidator;
+// 导出为全局方法（在 IIFE 中通过 global 参数传入）
+if (typeof (global as any) !== 'undefined') {
+  (global as any).initMFAHajackValidator = initMFAHajackValidator;
+}

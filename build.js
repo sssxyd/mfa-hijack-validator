@@ -1,81 +1,72 @@
 const fs = require('fs');
 const path = require('path');
+const Terser = require('terser');
 
-// 读取 package.json
-const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-const projectName = packageJson.name;
-const version = packageJson.version;
+// 主函数
+async function build() {
+  // 读取 package.json
+  const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+  const projectName = packageJson.name;
+  const version = packageJson.version;
 
-const libDir = path.join(__dirname, 'lib');
-const files = fs.readdirSync(libDir).filter(f => f.endsWith('.js') && !f.endsWith('.min.js'));
+  const libDir = path.join(__dirname, 'lib');
+  const indexJsPath = path.join(libDir, 'index.js');
 
-// 按照依赖顺序排序：utils.js 首先，index.js 最后
-files.sort((a, b) => {
-  if (a === 'utils.js') return -1;
-  if (b === 'utils.js') return 1;
-  if (a === 'index.js') return 1;
-  if (b === 'index.js') return -1;
-  return a.localeCompare(b);
-});
+  // 读取编译后的 index.js
+  let combinedContent = fs.readFileSync(indexJsPath, 'utf8');
 
-// 读取并合并所有文件
-let combinedContent = '';
-
-files.forEach(file => {
-  const filePath = path.join(libDir, file);
-  const content = fs.readFileSync(filePath, 'utf8');
-  
-  // 移除 "use strict"; 和 CommonJS 的 exports 部分，只保留一个
-  let processedContent = content
+  // 移除 CommonJS 相关代码
+  combinedContent = combinedContent
     .replace(/^"use strict";\s*/m, '')
     .replace(/Object\.defineProperty\(exports,\s*"__esModule",\s*\{[^}]*\}\);?\s*/g, '')
     .replace(/exports\.(\w+)\s*=\s*(\w+);/g, '');
-  
-  combinedContent += processedContent + '\n\n';
-});
 
-// 添加入口点
-combinedContent = '"use strict";\n' + combinedContent;
+  // 用 IIFE 包装代码，将全局作用域作为参数传入
+  combinedContent = `(function(global) {
+"use strict";
+${combinedContent}
+})(typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : {});`;
 
-// 1. 生成不压缩版本（带版本号）
-const unminifiedFileName = `${projectName}.${version}.js`;
-const unminifiedPath = path.join(libDir, unminifiedFileName);
-fs.writeFileSync(unminifiedPath, combinedContent, 'utf8');
+  // 1. 生成不压缩版本（带版本号）
+  const unminifiedFileName = `${projectName}.${version}.js`;
+  const unminifiedPath = path.join(libDir, unminifiedFileName);
+  fs.writeFileSync(unminifiedPath, combinedContent, 'utf8');
 
-// 2. 生成压缩版本（带版本号）
-const minifiedFileName = `${projectName}.${version}.min.js`;
-const minifiedPath = path.join(libDir, minifiedFileName);
-const minified = minifyCode(combinedContent);
-fs.writeFileSync(minifiedPath, minified, 'utf8');
+  // 2. 生成压缩版本（带版本号）
+  const minifiedFileName = `${projectName}.${version}.min.js`;
+  const minifiedPath = path.join(libDir, minifiedFileName);
+  const result = await Terser.minify(combinedContent, {
+    compress: true,
+    mangle: true,
+    output: {
+      comments: false
+    }
+  });
 
-// 3. 保留稳定入口 index.js（不带版本号，便于 main 字段指向）
-const entryPath = path.join(libDir, 'index.js');
-fs.writeFileSync(entryPath, combinedContent, 'utf8');
+  if (result.error) {
+    console.error('Minification failed:', result.error);
+    process.exit(1);
+  }
 
-console.log(`✓ Build completed successfully!`);
-console.log(`  - Unminified: ${unminifiedFileName} (${(fs.statSync(unminifiedPath).size / 1024).toFixed(2)} KB)`);
-console.log(`  - Minified:   ${minifiedFileName} (${(fs.statSync(minifiedPath).size / 1024).toFixed(2)} KB)`);
-console.log(`  - Entry:      index.js (${(fs.statSync(entryPath).size / 1024).toFixed(2)} KB)`);
+  fs.writeFileSync(minifiedPath, result.code, 'utf8');
 
-/**
- * 简单的代码压缩函数
- * 移除注释、空行和不必要的空格
- */
-function minifyCode(code) {
-  return code
-    // 移除块级注释
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    // 移除行级注释
-    .replace(/\/\/.*$/gm, '')
-    // 移除多余的空行
-    .replace(/^\s*\n/gm, '')
-    // 移除行前的空格
-    .replace(/^\s+/gm, '')
-    // 移除行尾的空格
-    .replace(/\s+$/gm, '')
-    // 缩减连续空格为单个空格
-    .replace(/\s+/g, ' ')
-    // 移除某些符号周围的空格
-    .replace(/\s*([{}();:,])\s*/g, '$1');
+  // 3. 删除原始的 index.js 和 utils.js（因为已经合并）
+  const filesToDelete = ['index.js', 'utils.js'];
+  filesToDelete.forEach(file => {
+    const filePath = path.join(libDir, file);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  });
+
+  console.log(`✓ Build completed successfully!`);
+  console.log(`  - Unminified: ${unminifiedFileName} (${(fs.statSync(unminifiedPath).size / 1024).toFixed(2)} KB)`);
+  console.log(`  - Minified:   ${minifiedFileName} (${(fs.statSync(minifiedPath).size / 1024).toFixed(2)} KB)`);
 }
+
+// 执行构建
+build().catch(error => {
+  console.error('Build failed:', error);
+  process.exit(1);
+});
 

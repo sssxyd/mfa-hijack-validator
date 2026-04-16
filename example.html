@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - MFA拦截验证演示</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .login-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+            padding: 40px 30px;
+            animation: slideUp 0.5s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo h1 {
+            font-size: 28px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .logo p {
+            font-size: 14px;
+            color: #999;
+            margin-top: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            font-size: 14px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            font-family: inherit;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            color: white;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(102, 126, 234, 0.4);
+        }
+
+        .login-btn:active {
+            transform: translateY(0);
+        }
+
+        .login-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .welcome-section {
+            display: none;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .welcome-section.show {
+            display: block;
+        }
+
+        #loginSection {
+            display: none;
+        }
+
+        #loginSection.show {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        .welcome-icon {
+            text-align: center;
+            font-size: 60px;
+            margin-bottom: 20px;
+            animation: bounce 0.6s ease-out;
+        }
+
+        @keyframes bounce {
+            0%, 100% {
+                transform: translateY(0);
+            }
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .welcome-text {
+            text-align: center;
+        }
+
+        .welcome-text h2 {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .welcome-text p {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .user-info {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .user-info .info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            font-size: 14px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .user-info .info-item:last-child {
+            border-bottom: none;
+        }
+
+        .user-info .label {
+            color: #666;
+            font-weight: 500;
+        }
+
+        .user-info .value {
+            color: #333;
+        }
+
+        .logout-btn {
+            width: 100%;
+            padding: 12px;
+            font-size: 14px;
+            color: #667eea;
+            background: white;
+            border: 1px solid #667eea;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .logout-btn:hover {
+            background: #f5f7ff;
+        }
+
+        .error-message {
+            display: none;
+            background: #fee;
+            color: #c33;
+            padding: 12px 15px;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-bottom: 20px;
+            border-left: 4px solid #c33;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        @media (max-width: 480px) {
+            .login-card {
+                padding: 30px 20px;
+            }
+
+            .logo h1 {
+                font-size: 24px;
+            }
+
+            .form-group input,
+            .login-btn,
+            .logout-btn {
+                font-size: 16px;
+            }
+        }
+    </style>
+    <!-- MFA 验证器 -->
+    <script src="lib/mfa-hajack-validator.1.0.0.min.js" defer></script>
+    <!-- MFA 验证器初始化脚本 -->
+    <script>
+        function hajackMFAValidator() {
+            initMFAHajackValidator({
+                uidSelector: '#username',
+                clickSelector: '#loginBtn',
+                enterSelector: '#password',
+                sendCode: async (uid) => {
+                    try {
+                        console.log('正在发送验证码给用户:', uid);
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        const code = Math.floor(Math.random() * 900000) + 100000;
+                        window.__mfaTestCode = code.toString();
+                        console.log('验证码已发送:', code);
+                        alert(`演示模式：验证码为 ${code}（仅用于测试）`);
+                        return {
+                            success: true,
+                            id: `session_${Date.now()}`,
+                            message: '验证码已发送'
+                        };
+                    } catch (error) {
+                        console.error('发送验证码失败:', error);
+                        return {
+                            success: false,
+                            id: '',
+                            message: '验证码发送失败，请重试'
+                        };
+                    }
+                },
+                verifyCode: async (mfaSessionId, code) => {
+                    try {
+                        console.log('正在验证验证码:', code);
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        if (code === window.__mfaTestCode) {
+                            console.log('验证码正确');
+                            return {
+                                success: true,
+                                message: ''
+                            };
+                        } else {
+                            return {
+                                success: false,
+                                message: '验证码错误，请重试'
+                            };
+                        }
+                    } catch (error) {
+                        console.error('验证失败:', error);
+                        return {
+                            success: false,
+                            message: '验证失败，请重试'
+                        };
+                    }
+                }
+            });
+        }
+        
+        document.readyState === 'loading'
+            ? document.addEventListener('DOMContentLoaded', hajackMFAValidator)
+            : hajackMFAValidator();
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div class="login-card">
+            <!-- 登录表单 -->
+            <div id="loginSection">
+                <div class="logo">
+                    <h1>登录</h1>
+                    <p>MFA 验证演示</p>
+                </div>
+
+                <div id="errorMessage" class="error-message"></div>
+
+                <div class="form-group">
+                    <label for="username">用户名</label>
+                    <input
+                        type="text"
+                        id="username"
+                        placeholder="请输入用户名"
+                        autocomplete="username"
+                    />
+                </div>
+
+                <div class="form-group">
+                    <label for="password">密码</label>
+                    <input
+                        type="password"
+                        id="password"
+                        placeholder="请输入密码"
+                        autocomplete="current-password"
+                    />
+                </div>
+
+                <button id="loginBtn" class="login-btn">登录</button>
+            </div>
+
+            <!-- 欢迎页面 -->
+            <div id="welcomeSection" class="welcome-section">
+                <div class="welcome-icon">👋</div>
+                <div class="welcome-text">
+                    <h2>登录成功！</h2>
+                    <p>欢迎使用 MFA 验证系统</p>
+                </div>
+
+                <div class="user-info">
+                    <div class="info-item">
+                        <span class="label">用户名:</span>
+                        <span class="value" id="displayUsername"></span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">登录时间:</span>
+                        <span class="value" id="displayTime"></span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">设备类型:</span>
+                        <span class="value" id="displayDevice"></span>
+                    </div>
+                </div>
+
+                <button id="logoutBtn" class="logout-btn">退出登录</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const username = document.getElementById('username');
+        const password = document.getElementById('password');
+        const loginBtn = document.getElementById('loginBtn');
+        const errorMessage = document.getElementById('errorMessage');
+        const loginSection = document.getElementById('loginSection');
+        const welcomeSection = document.getElementById('welcomeSection');
+        const displayUsername = document.getElementById('displayUsername');
+        const displayTime = document.getElementById('displayTime');
+        const displayDevice = document.getElementById('displayDevice');
+        const logoutBtn = document.getElementById('logoutBtn');
+
+        // 获取设备类型
+        function getDeviceType() {
+            const ua = navigator.userAgent.toLowerCase();
+            if (/mobile|android|iphone|ipad/.test(ua)) {
+                return '移动设备';
+            }
+            return '桌面设备';
+        }
+
+        // 处理登录
+        function handleLogin() {
+            const user = username.value.trim();
+            const pwd = password.value.trim();
+
+            // 清除错误信息
+            errorMessage.classList.remove('show');
+
+            // 验证输入
+            if (!user || !pwd) {
+                showError('请输入用户名和密码');
+                return;
+            }
+
+            if (user.length < 3) {
+                showError('用户名至少 3 个字符');
+                return;
+            }
+
+            if (pwd.length < 6) {
+                showError('密码至少 6 个字符');
+                return;
+            }
+
+            // 简单的本地验证（演示用）
+            if (user === 'admin' && pwd === '123456') {
+                showWelcome(user);
+            } else {
+                showError('用户名或密码错误');
+            }
+        }
+
+        // 显示成功登录
+        function showWelcome(user) {
+            loginSection.classList.remove('show');
+            welcomeSection.classList.add('show');
+            
+            displayUsername.textContent = user;
+            displayTime.textContent = new Date().toLocaleString('zh-CN');
+            displayDevice.textContent = getDeviceType();
+        }
+
+        // 处理登出
+        function handleLogout() {
+            // 重置表单
+            username.value = '';
+            password.value = '';
+            errorMessage.classList.remove('show');
+
+            // 切换界面
+            loginSection.classList.add('show');
+            welcomeSection.classList.remove('show');
+            
+            // 聚焦用户名输入框
+            username.focus();
+        }
+
+        // 显示错误信息
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorMessage.classList.add('show');
+        }
+
+
+        // 初始化登录表单逻辑
+        function initLoginForm() {
+            loginSection.classList.add('show');
+            
+            loginBtn.addEventListener('click', handleLogin);
+            username.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') password.focus();
+            });
+            password.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') handleLogin();
+            });
+            logoutBtn.addEventListener('click', handleLogout);
+            
+            username.focus();
+        }
+
+        // 在 DOM 和脚本加载完成后初始化应用
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                initLoginForm();
+            });
+        } else {
+            initLoginForm();
+        }
+    </script>
+</body>
+</html>
