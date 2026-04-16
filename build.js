@@ -35,20 +35,52 @@ ${combinedContent}
   // 2. 生成压缩版本（带版本号）
   const minifiedFileName = `${projectName}.${version}.min.js`;
   const minifiedPath = path.join(libDir, minifiedFileName);
-  const result = await Terser.minify(combinedContent, {
-    compress: true,
-    mangle: true,
-    output: {
-      comments: false
-    }
-  });
+  
+  try {
+    const result = await Terser.minify(combinedContent, {
+      compress: {
+        passes: 2,
+        dead_code: true,
+        drop_debugger: true,
+        keep_fargs: false,
+        reduce_funcs: true
+      },
+      mangle: {
+        keep_fnames: false,
+        properties: false
+      },
+      output: {
+        comments: false,
+        beautify: false,
+        preamble: '/*! MFA Hijack Validator */'
+      },
+      sourceMap: false
+    });
 
-  if (result.error) {
-    console.error('Minification failed:', result.error);
+    if (result.error) {
+      console.error('Minification failed:', result.error);
+      process.exit(1);
+    }
+
+    // 验证压缩后的代码
+    const minifiedCode = result.code;
+    if (!minifiedCode || minifiedCode.length === 0) {
+      console.error('Minification produced empty output');
+      process.exit(1);
+    }
+
+    // 检查代码是否以 '<' 开头（这表示生成失败）
+    if (minifiedCode.trim().startsWith('<')) {
+      console.error('Minification produced invalid output (starts with "<")');
+      console.error('First 100 chars:', minifiedCode.substring(0, 100));
+      process.exit(1);
+    }
+
+    fs.writeFileSync(minifiedPath, minifiedCode, 'utf8');
+  } catch (error) {
+    console.error('Minification process failed:', error.message);
     process.exit(1);
   }
-
-  fs.writeFileSync(minifiedPath, result.code, 'utf8');
 
   // 3. 删除原始的 index.js 和 utils.js（因为已经合并）
   const filesToDelete = ['index.js', 'utils.js'];

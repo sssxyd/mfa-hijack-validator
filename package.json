@@ -1,6 +1,6 @@
 {
   "name": "mfa-hijack-validator",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "",
   "scripts": {
     "test": "echo \"No tests configured\"",

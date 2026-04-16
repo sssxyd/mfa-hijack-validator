@@ -369,9 +369,8 @@ function initMFAHijackValidator(options: MFAHijackValidatorOptions): MFAHijackVa
       return;
     }
 
-    // 如果该元素在允许列表中，说明已通过 MFA 验证，允许默认行为执行
-    if (allowedClickElements.has(guardedElement)) {
-      allowedClickElements.delete(guardedElement);
+    // 如果已达到最大验证次数，允许默认行为执行
+    if (verifySuccessCount >= maxAttempts) {
       return; // 不阻止默认行为
     }
 
@@ -430,6 +429,11 @@ function initMFAHijackValidator(options: MFAHijackValidatorOptions): MFAHijackVa
     }
     if (!guardedElement) {
       return;
+    }
+
+    // 如果已达到最大验证次数，允许默认行为执行
+    if (verifySuccessCount >= maxAttempts) {
+      return; // 不阻止默认行为
     }
 
     if (!triggerMFA(guardedElement, 'keydown')) {
@@ -611,7 +615,6 @@ function openModal(
       if (onVerifySuccess) {
         onVerifySuccess(); // 调用计数器增加回调
       }
-      allowedClickElements.add(currentPending);
       closeAndClear();
       
       // 根据触发方式重放对应的事件
